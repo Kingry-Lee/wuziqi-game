@@ -62,14 +62,26 @@ function getPieceStyle(pos) {
 }
 
 function drawBoard() {
-  if (!boardCanvas.value || !ctx) return
+  if (!boardCanvas.value || !ctx) {
+    // 尝试重新获取 context
+    if (boardCanvas.value) {
+      ctx = boardCanvas.value.getContext('2d')
+    }
+    if (!ctx) return
+  }
   
   const canvas = boardCanvas.value
-  const size = boardSize.value
-  const rect = canvas.getBoundingClientRect()
+  const container = boardContainer.value
+  if (!container) return
+  
+  // 确保 canvas 尺寸与容器一致
+  const rect = container.getBoundingClientRect()
+  if (rect.width === 0 || rect.height === 0) return
+  
   canvas.width = rect.width
   canvas.height = rect.height
   
+  const size = boardSize.value
   const padding = 20
   const gridSize = (Math.min(canvas.width, canvas.height) - padding * 2) / (size - 1)
   
@@ -191,6 +203,9 @@ function handleResize() {
   drawBoard()
 }
 
+// 使用 ResizeObserver 监听容器大小变化
+let resizeObserver = null
+
 watch(boardSize, () => {
   setTimeout(drawBoard, 100)
 })
@@ -200,13 +215,27 @@ watch(cells, () => {
 }, { deep: true })
 
 onMounted(() => {
-  ctx = boardCanvas.value.getContext('2d')
-  drawBoard()
-  
-  window.addEventListener('resize', handleResize)
+  // 等待 DOM 渲染完成后初始化 canvas
+  setTimeout(() => {
+    if (boardCanvas.value) {
+      ctx = boardCanvas.value.getContext('2d')
+      drawBoard()
+      
+      // 使用 ResizeObserver 监听容器大小变化
+      if (boardContainer.value) {
+        resizeObserver = new ResizeObserver(() => {
+          drawBoard()
+        })
+        resizeObserver.observe(boardContainer.value)
+      }
+    }
+  }, 50)
 })
 
 onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+  }
   window.removeEventListener('resize', handleResize)
 })
 </script>
