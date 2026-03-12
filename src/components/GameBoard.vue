@@ -118,12 +118,12 @@ function drawBoard() {
   const rect = container.getBoundingClientRect()
   if (rect.width === 0 || rect.height === 0) return
   
-  // 确保 boardSize 有效
-  const size = boardData.value.boardSize
-  if (!size || size < 2) return
-  
   canvas.width = rect.width
   canvas.height = rect.height
+  
+  // 使用默认大小 15，确保网格始终能绘制
+  const size = boardData.value.boardSize || 15
+  if (size < 2) return
   
   const padding = 20
   const gridSize = (Math.min(canvas.width, canvas.height) - padding * 2) / (size - 1)
