@@ -1,43 +1,84 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, provide } from 'vue'
 import GameBoard from './components/GameBoard.vue'
 import ControlPanel from './components/ControlPanel.vue'
+import OnlinePanel from './components/OnlinePanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import HistoryPanel from './components/HistoryPanel.vue'
 import { useGame } from './composables/useGame'
+import { useOnlineGame } from './composables/useOnlineGame'
 
 const { initGame } = useGame()
+const onlineGame = useOnlineGame()
 
 const showSettings = ref(false)
 const showHistory = ref(false)
+const gameMode = ref('ai') // 'ai', 'local', 'online'
+
+// 提供给子组件使用
+provide('gameMode', gameMode)
+provide('onlineGame', onlineGame)
 
 onMounted(() => {
   initGame()
 })
+
+function handleModeChange(mode) {
+  gameMode.value = mode
+  if (mode === 'ai' || mode === 'local') {
+    initGame()
+  }
+}
 </script>
 
 <template>
   <div class="app-container">
     <header class="app-header">
       <h1>五子棋</h1>
+      <!-- 模式选择 -->
+      <div class="mode-selector">
+        <button 
+          :class="['mode-btn', { active: gameMode === 'ai' }]"
+          @click="handleModeChange('ai')"
+        >
+          人机对战
+        </button>
+        <button 
+          :class="['mode-btn', { active: gameMode === 'local' }]"
+          @click="handleModeChange('local')"
+        >
+          双人模式
+        </button>
+        <button 
+          :class="['mode-btn', { active: gameMode === 'online' }]"
+          @click="handleModeChange('online')"
+        >
+          在线对战
+        </button>
+      </div>
     </header>
     
     <main class="game-container">
       <div class="board-wrapper">
-        <GameBoard />
+        <GameBoard :mode="gameMode" :onlineGame="gameMode === 'online' ? onlineGame : null" />
       </div>
       
       <aside class="sidebar">
+        <!-- AI/本地模式 -->
         <ControlPanel 
+          v-if="gameMode !== 'online'"
           @open-settings="showSettings = true"
           @open-history="showHistory = true"
         />
+        
+        <!-- 在线模式 -->
+        <OnlinePanel v-else />
       </aside>
     </main>
 
     <!-- 设置面板 -->
     <SettingsPanel 
-      v-if="showSettings" 
+      v-if="showSettings && gameMode !== 'online'" 
       @close="showSettings = false"
       @apply="initGame"
     />
@@ -89,6 +130,34 @@ body {
   font-size: 32px;
   font-weight: 600;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  margin-bottom: 16px;
+}
+
+.mode-selector {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mode-btn {
+  padding: 8px 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mode-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.mode-btn.active {
+  background: #4caf50;
+  border-color: #4caf50;
 }
 
 .game-container {
@@ -106,7 +175,7 @@ body {
 }
 
 .sidebar {
-  width: 280px;
+  width: 320px;
   flex-shrink: 0;
 }
 
@@ -135,6 +204,11 @@ body {
 
   .app-header h1 {
     font-size: 24px;
+  }
+
+  .mode-btn {
+    padding: 6px 12px;
+    font-size: 12px;
   }
 
   .board-wrapper {
