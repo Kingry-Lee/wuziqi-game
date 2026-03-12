@@ -129,8 +129,10 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useOnlineGame } from '../composables/useOnlineGame'
+import { ref, inject } from 'vue'
+
+// 使用 App.vue 提供的同一个 onlineGame 实例
+const onlineGame = inject('onlineGame')
 
 const {
   connected,
@@ -155,7 +157,7 @@ const {
   requestRestart,
   acceptRestart,
   rejectRestart,
-} = useOnlineGame()
+} = onlineGame
 
 const serverUrl = ref('http://localhost:3001')
 const joinRoomId = ref('')

@@ -69,12 +69,12 @@ const boardData = computed(() => {
   // 在线模式
   if (props.mode === 'online' && props.onlineGame) {
     return {
-      cells: props.onlineGame.cells || [],
-      boardSize: props.onlineGame.boardSize || 15,
-      currentPlayer: props.onlineGame.currentPlayer || 1,
-      gameOver: props.onlineGame.gameOver || false,
-      lastMove: props.onlineGame.lastMove || null,
-      isMyTurn: props.onlineGame.isMyTurn || false
+      cells: props.onlineGame.cells.value || [],
+      boardSize: props.onlineGame.boardSize.value || 15,
+      currentPlayer: props.onlineGame.currentPlayer.value || 1,
+      gameOver: props.onlineGame.gameOver.value || false,
+      lastMove: props.onlineGame.lastMove.value || null,
+      isMyTurn: props.onlineGame.isMyTurn.value || false
     }
   }
   // 本地/AI 模式
@@ -93,46 +93,73 @@ function isLastMove(pos) {
 }
 
 function getPieceStyle(pos) {
-  const cellSize = 100 / boardData.value.boardSize
-  const offset = cellSize / 2
+  const size = boardData.value.boardSize || 15
+  const container = boardContainer.value
+  if (!container) {
+    const cellSize = 100 / size
+    const offset = cellSize / 2
+    return {
+      left: `${pos.col * cellSize + offset}%`,
+      top: `${pos.row * cellSize + offset}%`,
+    }
+  }
+  
+  // 使用与 drawBoard 相同的计算方式
+  const rect = container.getBoundingClientRect()
+  const padding = 20
+  const width = rect.width
+  const height = rect.height
+  const gridSize = (Math.min(width, height) - padding * 2) / (size - 1)
+  
+  // 计算棋子在 canvas 中的像素位置
+  const x = padding + pos.col * gridSize
+  const y = padding + pos.row * gridSize
+  
+  // 转换为百分比位置（相对于容器）
+  const leftPercent = (x / width) * 100
+  const topPercent = (y / height) * 100
+  
   return {
-    left: `${pos.col * cellSize + offset}%`,
-    top: `${pos.row * cellSize + offset}%`,
+    left: `${leftPercent}%`,
+    top: `${topPercent}%`,
   }
 }
 
 function drawBoard() {
-  if (!boardCanvas.value || !ctx) {
-    // 尝试重新获取 context
-    if (boardCanvas.value) {
-      ctx = boardCanvas.value.getContext('2d')
-    }
-    if (!ctx) return
+  // 强制获取 context
+  if (boardCanvas.value) {
+    ctx = boardCanvas.value.getContext('2d')
   }
+  if (!ctx || !boardCanvas.value) return
   
   const canvas = boardCanvas.value
   const container = boardContainer.value
-  if (!container) return
   
-  // 确保 canvas 尺寸与容器一致
-  const rect = container.getBoundingClientRect()
-  if (rect.width === 0 || rect.height === 0) return
+  // 使用容器尺寸，如果为0则使用默认值
+  let width = 400
+  let height = 400
   
-  canvas.width = rect.width
-  canvas.height = rect.height
+  if (container) {
+    const rect = container.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      width = rect.width
+      height = rect.height
+    }
+  }
   
-  // 使用默认大小 15，确保网格始终能绘制
-  const size = boardData.value.boardSize || 15
-  if (size < 2) return
+  canvas.width = width
+  canvas.height = height
   
+  // 使用默认大小 15
+  const size = 15
   const padding = 20
-  const gridSize = (Math.min(canvas.width, canvas.height) - padding * 2) / (size - 1)
+  const gridSize = (Math.min(width, height) - padding * 2) / (size - 1)
   
-  // 清空画布
+  // 清空画布 - 木纹色背景
   ctx.fillStyle = '#DEB887'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.fillRect(0, 0, width, height)
   
-  // 画网格线
+  // 画网格线 - 黑色
   ctx.strokeStyle = '#000'
   ctx.lineWidth = 1
   
@@ -153,62 +180,60 @@ function drawBoard() {
   }
   
   // 画星位
-  const starPoints = getStarPoints(size)
+  const starPoints = [
+    { row: 3, col: 3 },
+    { row: 3, col: 11 },
+    { row: 11, col: 3 },
+    { row: 11, col: 11 },
+    { row: 7, col: 7 }
+  ]
+  
   ctx.fillStyle = '#000'
   for (const star of starPoints) {
     const x = padding + star.col * gridSize
     const y = padding + star.row * gridSize
     ctx.beginPath()
-    ctx.arc(x, y, 5, 0, Math.PI * 2)
+    ctx.arc(x, y, 4, 0, Math.PI * 2)
     ctx.fill()
   }
 }
 
-function getStarPoints(size) {
-  if (size < 13) return []
-  
-  const stars = []
-  const offsets = [
-    { r: 3, c: 3 },
-    { r: 3, c: size - 4 },
-    { r: size - 4, c: 3 },
-    { r: size - 4, c: size - 4 },
-  ]
-  
-  if (size === 15 || size === 19) {
-    const center = Math.floor(size / 2)
-    stars.push({ row: center, col: center })
-  }
-  
-  offsets.forEach(o => {
-    if (o.r >= 0 && o.r < size && o.c >= 0 && o.c < size) {
-      stars.push({ row: o.r, col: o.c })
-    }
-  })
-  
-  return stars
-}
-
 function handleClick(e) {
+  if (!boardCanvas.value) return
+  
+  // 获取 canvas 相对于视口的位置
+  const canvas = boardCanvas.value
+  const rect = canvas.getBoundingClientRect()
+  
+  // 计算点击在 canvas 内的坐标
+  const scaleX = canvas.width / rect.width
+  const scaleY = canvas.height / rect.height
+  const x = (e.clientX - rect.left) * scaleX
+  const y = (e.clientY - rect.top) * scaleY
+  
   // 在线模式检查
   if (props.mode === 'online' && props.onlineGame) {
-    // 在线对战：检查是否轮到自己
-    if (!props.onlineGame.gameStarted || props.onlineGame.gameOver || !props.onlineGame.isMyTurn) return
+    const game = props.onlineGame
     
-    const rect = boardCanvas.value.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    // 游戏未开始或已结束，不能落子
+    if (!game.gameStarted.value) return
+    if (game.gameOver.value) return
+    if (!game.isMyTurn.value) return
     
-    const size = props.onlineGame.boardSize || 15
+    // 使用固定的棋盘尺寸计算
+    const size = 15
     const padding = 20
-    const gridSize = (Math.min(rect.width, rect.height) - padding * 2) / (size - 1)
+    const cellSize = (canvas.width - padding * 2) / (size - 1)
     
-    const col = Math.round((x - padding) / gridSize)
-    const row = Math.round((y - padding) / gridSize)
+    // 计算最近的交叉点
+    const col = Math.round((x - padding) / cellSize)
+    const row = Math.round((y - padding) / cellSize)
     
+    // cells 是计算属性，需要 .value 访问
+    const gameCells = game.cells.value
     if (row >= 0 && row < size && col >= 0 && col < size) {
-      if (props.onlineGame.cells[row][col] === 0) {
-        props.onlineGame.placePiece(row, col)
+      if (gameCells && gameCells[row] && gameCells[row][col] === 0) {
+        game.placePiece(row, col)
       }
     }
     return
@@ -217,16 +242,12 @@ function handleClick(e) {
   // 本地/AI 模式
   if (gameOver.value || isAIThinking.value) return
   
-  const rect = boardCanvas.value.getBoundingClientRect()
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
-  
   const size = boardSize.value
   const padding = 20
-  const gridSize = (Math.min(rect.width, rect.height) - padding * 2) / (size - 1)
+  const cellSize = (canvas.width - padding * 2) / (size - 1)
   
-  const col = Math.round((x - padding) / gridSize)
-  const row = Math.round((y - padding) / gridSize)
+  const col = Math.round((x - padding) / cellSize)
+  const row = Math.round((y - padding) / cellSize)
   
   if (row >= 0 && row < size && col >= 0 && col < size) {
     if (cells.value[row][col] === 0) {
@@ -236,26 +257,36 @@ function handleClick(e) {
 }
 
 function handleMouseMove(e) {
-  // 在线模式检查
+  if (!boardCanvas.value) return
+  
+  const canvas = boardCanvas.value
+  const rect = canvas.getBoundingClientRect()
+  
+  // 计算鼠标在 canvas 内的坐标
+  const scaleX = canvas.width / rect.width
+  const scaleY = canvas.height / rect.height
+  const x = (e.clientX - rect.left) * scaleX
+  const y = (e.clientY - rect.top) * scaleY
+  
+  // 在线模式
   if (props.mode === 'online' && props.onlineGame) {
-    if (!props.onlineGame.gameStarted || props.onlineGame.gameOver || !props.onlineGame.isMyTurn) {
+    const game = props.onlineGame
+    if (!game.gameStarted.value || game.gameOver.value || !game.isMyTurn.value) {
       hoverPos.value = null
       return
     }
     
-    const rect = boardCanvas.value.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    
-    const size = props.onlineGame.boardSize || 15
+    const size = 15
     const padding = 20
-    const gridSize = (Math.min(rect.width, rect.height) - padding * 2) / (size - 1)
+    const cellSize = (canvas.width - padding * 2) / (size - 1)
     
-    const col = Math.round((x - padding) / gridSize)
-    const row = Math.round((y - padding) / gridSize)
+    const col = Math.round((x - padding) / cellSize)
+    const row = Math.round((y - padding) / cellSize)
     
+    // cells 是计算属性，需要 .value 访问
+    const gameCells = game.cells.value
     if (row >= 0 && row < size && col >= 0 && col < size) {
-      if (props.onlineGame.cells[row][col] === 0) {
+      if (gameCells && gameCells[row] && gameCells[row][col] === 0) {
         hoverPos.value = { row, col }
       } else {
         hoverPos.value = null
@@ -272,19 +303,15 @@ function handleMouseMove(e) {
     return
   }
   
-  const rect = boardCanvas.value.getBoundingClientRect()
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
-  
   const size = boardData.value.boardSize
   const padding = 20
-  const gridSize = (Math.min(rect.width, rect.height) - padding * 2) / (size - 1)
+  const cellSize = (canvas.width - padding * 2) / (size - 1)
   
-  const col = Math.round((x - padding) / gridSize)
-  const row = Math.round((y - padding) / gridSize)
+  const col = Math.round((x - padding) / cellSize)
+  const row = Math.round((y - padding) / cellSize)
   
   if (row >= 0 && row < size && col >= 0 && col < size) {
-    if (boardData.value.cells[row][col] === 0) {
+    if (boardData.value.cells[row] && boardData.value.cells[row][col] === 0) {
       hoverPos.value = { row, col }
     } else {
       hoverPos.value = null
@@ -315,13 +342,27 @@ watch(() => boardData.value.cells, () => {
 }, { deep: true })
 
 // 监听模式变化，确保重绘
-watch(() => props.mode, () => {
-  setTimeout(drawBoard, 100)
+watch(() => props.mode, (newMode) => {
+  // 强制重新获取 context 并重绘
+  setTimeout(() => {
+    ctx = null
+    drawBoard()
+  }, 100)
 })
 
 watch(() => props.onlineGame?.gameStarted, () => {
   setTimeout(drawBoard, 100)
 })
+
+// 监听 onlineGame 对象本身的变化
+watch(() => props.onlineGame, (newVal) => {
+  if (newVal) {
+    setTimeout(() => {
+      ctx = null
+      drawBoard()
+    }, 100)
+  }
+}, { deep: true })
 
 onMounted(() => {
   // 等待 DOM 渲染完成后初始化 canvas

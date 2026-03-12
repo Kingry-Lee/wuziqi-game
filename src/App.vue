@@ -8,7 +8,7 @@ import HistoryPanel from './components/HistoryPanel.vue'
 import { useGame } from './composables/useGame'
 import { useOnlineGame } from './composables/useOnlineGame'
 
-const { initGame } = useGame()
+const { initGame, setConfig } = useGame()
 const onlineGame = useOnlineGame()
 
 const showSettings = ref(false)
@@ -25,7 +25,9 @@ onMounted(() => {
 
 function handleModeChange(mode) {
   gameMode.value = mode
+  // 将游戏模式传递给 ConfigManager
   if (mode === 'ai' || mode === 'local') {
+    setConfig('gameMode', mode)
     initGame()
   }
 }

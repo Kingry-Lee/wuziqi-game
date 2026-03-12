@@ -54,6 +54,10 @@ export function useOnlineGame() {
 
     // 对方落子
     socket.value.on('piece-placed', (data) => {
+      // 检查是否是自己的落子（已经本地更新过了，跳过）
+      if (data.player === player.value) return
+      
+      // 对方落子
       board.value.cells[data.row][data.col] = data.player
       board.value.moveHistory.push({ row: data.row, col: data.col, player: data.player })
       board.value.lastMove = { row: data.row, col: data.col }
@@ -179,16 +183,24 @@ export function useOnlineGame() {
     // 检查位置是否有效
     if (!board.value.isEmpty(row, col)) return false
 
+    // 本地先更新（乐观更新，提供更好的用户体验）
+    board.value.cells[row][col] = player.value
+    board.value.moveHistory.push({ row, col, player: player.value })
+    board.value.lastMove = { row, col }
+    isMyTurn.value = false // 先设为不是自己的回合，等待服务器响应
+    
     socket.value.emit('place-piece', { row, col, player: player.value }, (response) => {
-      if (response.success) {
-        // 本地先更新
-        board.value.cells[row][col] = player.value
-        board.value.moveHistory.push({ row, col, player: player.value })
-        board.value.lastMove = { row, col }
-        updateTurn(player.value === 1 ? 2 : 1)
-      } else {
+      if (!response.success) {
+        // 如果服务器失败，回滚本地更新
+        board.value.cells[row][col] = 0
+        board.value.moveHistory.pop()
+        board.value.lastMove = board.value.moveHistory.length > 0 
+          ? board.value.moveHistory[board.value.moveHistory.length - 1] 
+          : null
+        isMyTurn.value = true
         error.value = response.error
       }
+      // 如果成功，服务器会广播 piece-placed 事件
     })
     
     return true
