@@ -14,9 +14,9 @@
       </div>
       <!-- 悬停提示 -->
       <div 
-        v-if="hoverPos && !gameOver && !isAIThinking"
+        v-if="hoverPos && !boardData.gameOver && !boardData.isMyTurn"
         class="hover-piece"
-        :class="currentPlayer === 1 ? 'black' : 'white'"
+        :class="boardData.currentPlayer === 1 ? 'black' : 'white'"
         :style="getPieceStyle(hoverPos)"
       ></div>
     </div>
@@ -27,6 +27,17 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useGame } from '../composables/useGame'
 
+const props = defineProps({
+  mode: {
+    type: String,
+    default: 'ai'
+  },
+  onlineGame: {
+    type: Object,
+    default: null
+  }
+})
+
 const { cells, boardSize, currentPlayer, gameOver, lastMove, isAIThinking, placePiece } = useGame()
 
 const boardContainer = ref(null)
@@ -35,25 +46,55 @@ const hoverPos = ref(null)
 
 let ctx = null
 
-// 获取所有棋子位置
+// 获取所有棋子位置（根据模式选择数据源）
 const piecePositions = computed(() => {
   const positions = []
-  for (let row = 0; row < boardSize.value; row++) {
-    for (let col = 0; col < boardSize.value; col++) {
-      if (cells.value[row][col] !== 0) {
-        positions.push({ row, col, player: cells.value[row][col] })
+  const board = props.mode === 'online' && props.onlineGame ? props.onlineGame : useGame()
+  const cellsData = props.mode === 'online' && props.onlineGame 
+    ? props.onlineGame.cells 
+    : cells.value
+  const size = props.mode === 'online' && props.onlineGame 
+    ? props.onlineGame.boardSize || 15 
+    : boardSize.value
+  
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      if (cellsData[row][col] !== 0) {
+        positions.push({ row, col, player: cellsData[row][col] })
       }
     }
   }
   return positions
 })
 
+// 根据模式获取棋盘数据
+const boardData = computed(() => {
+  if (props.mode === 'online' && props.onlineGame) {
+    return {
+      cells: props.onlineGame.cells,
+      boardSize: props.onlineGame.boardSize || 15,
+      currentPlayer: props.onlineGame.currentPlayer,
+      gameOver: props.onlineGame.gameOver,
+      lastMove: props.onlineGame.lastMove,
+      isMyTurn: props.onlineGame.isMyTurn
+    }
+  }
+  return {
+    cells: cells.value,
+    boardSize: boardSize.value,
+    currentPlayer: currentPlayer.value,
+    gameOver: gameOver.value,
+    lastMove: lastMove.value,
+    isMyTurn: true
+  }
+})
+
 function isLastMove(pos) {
-  return lastMove.value && lastMove.value.row === pos.row && lastMove.value.col === pos.col
+  return boardData.value.lastMove && boardData.value.lastMove.row === pos.row && boardData.value.lastMove.col === pos.col
 }
 
 function getPieceStyle(pos) {
-  const cellSize = 100 / boardSize.value
+  const cellSize = 100 / boardData.value.boardSize
   const offset = cellSize / 2
   return {
     left: `${pos.col * cellSize + offset}%`,
@@ -81,7 +122,7 @@ function drawBoard() {
   canvas.width = rect.width
   canvas.height = rect.height
   
-  const size = boardSize.value
+  const size = boardData.value.boardSize
   const padding = 20
   const gridSize = (Math.min(canvas.width, canvas.height) - padding * 2) / (size - 1)
   
@@ -147,6 +188,31 @@ function getStarPoints(size) {
 }
 
 function handleClick(e) {
+  // 在线模式检查
+  if (props.mode === 'online' && props.onlineGame) {
+    // 在线对战：检查是否轮到自己
+    if (!props.onlineGame.gameStarted || props.onlineGame.gameOver || !props.onlineGame.isMyTurn) return
+    
+    const rect = boardCanvas.value.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    
+    const size = props.onlineGame.boardSize || 15
+    const padding = 20
+    const gridSize = (Math.min(rect.width, rect.height) - padding * 2) / (size - 1)
+    
+    const col = Math.round((x - padding) / gridSize)
+    const row = Math.round((y - padding) / gridSize)
+    
+    if (row >= 0 && row < size && col >= 0 && col < size) {
+      if (props.onlineGame.cells[row][col] === 0) {
+        props.onlineGame.placePiece(row, col)
+      }
+    }
+    return
+  }
+  
+  // 本地/AI 模式
   if (gameOver.value || isAIThinking.value) return
   
   const rect = boardCanvas.value.getBoundingClientRect()
@@ -168,7 +234,38 @@ function handleClick(e) {
 }
 
 function handleMouseMove(e) {
-  if (gameOver.value || isAIThinking.value) {
+  // 在线模式检查
+  if (props.mode === 'online' && props.onlineGame) {
+    if (!props.onlineGame.gameStarted || props.onlineGame.gameOver || !props.onlineGame.isMyTurn) {
+      hoverPos.value = null
+      return
+    }
+    
+    const rect = boardCanvas.value.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    
+    const size = props.onlineGame.boardSize || 15
+    const padding = 20
+    const gridSize = (Math.min(rect.width, rect.height) - padding * 2) / (size - 1)
+    
+    const col = Math.round((x - padding) / gridSize)
+    const row = Math.round((y - padding) / gridSize)
+    
+    if (row >= 0 && row < size && col >= 0 && col < size) {
+      if (props.onlineGame.cells[row][col] === 0) {
+        hoverPos.value = { row, col }
+      } else {
+        hoverPos.value = null
+      }
+    } else {
+      hoverPos.value = null
+    }
+    return
+  }
+  
+  // 本地/AI 模式
+  if (boardData.value.gameOver || isAIThinking.value) {
     hoverPos.value = null
     return
   }
@@ -177,7 +274,7 @@ function handleMouseMove(e) {
   const x = e.clientX - rect.left
   const y = e.clientY - rect.top
   
-  const size = boardSize.value
+  const size = boardData.value.boardSize
   const padding = 20
   const gridSize = (Math.min(rect.width, rect.height) - padding * 2) / (size - 1)
   
@@ -185,7 +282,7 @@ function handleMouseMove(e) {
   const row = Math.round((y - padding) / gridSize)
   
   if (row >= 0 && row < size && col >= 0 && col < size) {
-    if (cells.value[row][col] === 0) {
+    if (boardData.value.cells[row][col] === 0) {
       hoverPos.value = { row, col }
     } else {
       hoverPos.value = null
@@ -206,11 +303,12 @@ function handleResize() {
 // 使用 ResizeObserver 监听容器大小变化
 let resizeObserver = null
 
-watch(boardSize, () => {
+// 监听棋盘数据变化
+watch(() => boardData.value.boardSize, () => {
   setTimeout(drawBoard, 100)
 })
 
-watch(cells, () => {
+watch(() => boardData.value.cells, () => {
   // 棋子位置通过Vue渲染，不需要重画
 }, { deep: true })
 
