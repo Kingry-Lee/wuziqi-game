@@ -46,20 +46,17 @@ const hoverPos = ref(null)
 
 let ctx = null
 
-// 获取所有棋子位置（根据模式选择数据源）
+// 获取所有棋子位置（使用 boardData）
 const piecePositions = computed(() => {
   const positions = []
-  const board = props.mode === 'online' && props.onlineGame ? props.onlineGame : useGame()
-  const cellsData = props.mode === 'online' && props.onlineGame 
-    ? props.onlineGame.cells 
-    : cells.value
-  const size = props.mode === 'online' && props.onlineGame 
-    ? props.onlineGame.boardSize || 15 
-    : boardSize.value
+  const cellsData = boardData.value.cells
+  const size = boardData.value.boardSize
+  
+  if (!cellsData || !Array.isArray(cellsData)) return positions
   
   for (let row = 0; row < size; row++) {
     for (let col = 0; col < size; col++) {
-      if (cellsData[row][col] !== 0) {
+      if (cellsData[row] && cellsData[row][col] !== 0) {
         positions.push({ row, col, player: cellsData[row][col] })
       }
     }
@@ -69,16 +66,18 @@ const piecePositions = computed(() => {
 
 // 根据模式获取棋盘数据
 const boardData = computed(() => {
+  // 在线模式
   if (props.mode === 'online' && props.onlineGame) {
     return {
-      cells: props.onlineGame.cells,
+      cells: props.onlineGame.cells || [],
       boardSize: props.onlineGame.boardSize || 15,
-      currentPlayer: props.onlineGame.currentPlayer,
-      gameOver: props.onlineGame.gameOver,
-      lastMove: props.onlineGame.lastMove,
-      isMyTurn: props.onlineGame.isMyTurn
+      currentPlayer: props.onlineGame.currentPlayer || 1,
+      gameOver: props.onlineGame.gameOver || false,
+      lastMove: props.onlineGame.lastMove || null,
+      isMyTurn: props.onlineGame.isMyTurn || false
     }
   }
+  // 本地/AI 模式
   return {
     cells: cells.value,
     boardSize: boardSize.value,
@@ -119,10 +118,13 @@ function drawBoard() {
   const rect = container.getBoundingClientRect()
   if (rect.width === 0 || rect.height === 0) return
   
+  // 确保 boardSize 有效
+  const size = boardData.value.boardSize
+  if (!size || size < 2) return
+  
   canvas.width = rect.width
   canvas.height = rect.height
   
-  const size = boardData.value.boardSize
   const padding = 20
   const gridSize = (Math.min(canvas.width, canvas.height) - padding * 2) / (size - 1)
   
@@ -311,6 +313,15 @@ watch(() => boardData.value.boardSize, () => {
 watch(() => boardData.value.cells, () => {
   // 棋子位置通过Vue渲染，不需要重画
 }, { deep: true })
+
+// 监听模式变化，确保重绘
+watch(() => props.mode, () => {
+  setTimeout(drawBoard, 100)
+})
+
+watch(() => props.onlineGame?.gameStarted, () => {
+  setTimeout(drawBoard, 100)
+})
 
 onMounted(() => {
   // 等待 DOM 渲染完成后初始化 canvas
